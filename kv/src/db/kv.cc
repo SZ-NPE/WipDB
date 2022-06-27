@@ -52,14 +52,14 @@ Status KV::Open(Options& options,
     *dbptr = nullptr;
     KV* kv = new KV(options, name);
     kv->is_huge_ = is_huge;
-    kv->options_.table_cache = new TableCache(name, kv->options_, options.max_open_files - 50); 
+    kv->options_.table_cache = new TableCache(name, kv->options_, options.max_open_files - 50);  // 创建一个 TableCache
 
     std::vector<std::string> p;
-    bool res = kv->RestorePivots(name, p);
+    bool res = kv->RestorePivots(name, p); // 创建/读取 pivots 文件，主要用于恢复过程
 
     if (!res) {
         printf("using provided pivots\n");
-        p = pivots;
+        p = pivots; // 使用参数传递的 pivots 文件
     }
     else {
         printf("using restored pivots\n");
@@ -67,11 +67,11 @@ Status KV::Open(Options& options,
     // build hugepage 
     
     uint64_t write_buffer_size = options.write_buffer_size;
-    uint64_t partition = p.size();
+    uint64_t partition = p.size(); // 获取分区个数
 
     // kWALMax = write_buffer_size * partition;
     
-    s = kv->BuildBuckets(p);
+    s = kv->BuildBuckets(p); // 构建多个分区桶
     if (!s.ok()) {
         return s;
     }
@@ -234,30 +234,30 @@ Status KV::BuildBuckets(vector<std::string>& pivots) {
     // create root folder
     Status s;
     // ignore the File exists IO error
-    ::mkdir(dbname_.c_str(), 0755);
+    ::mkdir(dbname_.c_str(), 0755); // 创建对应给的 db 路径的文件夹
     VersionKVEdit edit;
     // number the ordered buckets
     int num = 0;
     for(uint32_t i = 0; i < pivots.size(); ++i) {
-        Bucket* node = new Bucket();
-        node->Ref();
-        if (is_huge_) {
-            node->hugepage = new HugePageBlock(options_.write_buffer_size * 6);
+        Bucket* node = new Bucket(); // 为每个分区创建一个 bucket
+        node->Ref(); // 增加桶的引用计数
+        if (is_huge_) { // 判断是否启用了大页面
+            node->hugepage = new HugePageBlock(options_.write_buffer_size * 6); // 是的话创建对应的大页面
         }
-        std::string bucket_name = dbname_ + "/" + pivots[i];
+        std::string bucket_name = dbname_ + "/" + pivots[i]; // 给每个分区指定 name，分区键来区分
         node->options = options_;
         node->db_name = bucket_name;
-        s = DB::Open(options_, bucket_name , &node->db, dbname_, node, this);
+        s = DB::Open(options_, bucket_name , &node->db, dbname_, node, this); // 每个分区本质为一个 LSM 树
         if(!s.ok()) {
             return s;
         }
-        node->largest = pivots[i];
+        node->largest = pivots[i]; // 最大值即为分区键
         node->db_name = bucket_name;
-        edit.AddBucket(node);
+        edit.AddBucket(node); // 添加到 version edit
         num++;
     }
 
-    versions_->Apply(&edit);
+    versions_->Apply(&edit); // 持久化 version edit
     return s;
 }
 
@@ -538,15 +538,15 @@ class KVInserter : public WriteBatch::Handler {
     return n;
   }
   virtual void Put(const Slice& key, const Slice& value) {
-    MutexLock l(&kv_->version_lock_);
+    MutexLock l(&kv_->version_lock_); // 加锁
     VersionKV* v = kv_->versions_->current();
     v->Ref();
-    int ni = Bucket::lower_bound(v->buckets_, key);
+    int ni = Bucket::lower_bound(v->buckets_, key); // 获取当前 key 所属的 bucket
     Bucket* n = v->buckets_[ni];
-    n = MaybeReSplitAndReFind(n, key);
+    n = MaybeReSplitAndReFind(n, key); // 判断是否需要拆分或者重新路由 bucket
     n->Ref();
     kv_->version_lock_.Unlock();
-    Status s = n->db->Put(*write_options_, key, value, sequence_);
+    Status s = n->db->Put(*write_options_, key, value, sequence_); // 指定 bucket 的指定 db 执行操作
     kv_->version_lock_.Lock();
     sequence_++;
     n->Unref();
@@ -590,93 +590,100 @@ void KV::CompactRange(int bucket_no) {
 
 Status KV::WriteToWAL(const WriteThread::WriteGroup& write_group, WriteBatch*& merged_batch) {
     Status status;
+    // 判断是否开启了日志，且是否触发了刷回以及日志的大小是否大于等于了 WAL 阈值 128MB
+    // 或者一开始没有日志
+    // 满足上述条件，创建新的日志并写入
     if ((options_.wal_log && env_->HasFlush() && logfile_->GetFileSize() >= kWALMax ) || 
         (logfile_ == nullptr)) {
         // switch WAL
         WritableFile* lfile = nullptr;
-        uint64_t old_log_number = LogNumber();
-        uint64_t new_log_number = NextLogNumber();
+        uint64_t old_log_number = LogNumber(); // 读取原有的日志文件号
+        uint64_t new_log_number = NextLogNumber(); // 生成新的日志文件号
 
+        // 创建新的日志文件
         std::string log_fname = LogFileName(logpath_, new_log_number);
         status = env_->NewWritableFile(log_fname , &lfile, env_options_);
-        lfile->SetIOPriority(Env::IO_LOW);
+        lfile->SetIOPriority(Env::IO_LOW); // 设置日志文件的 IO 优先级
 
         unique_ptr<WritableFileWriter> file_writer(
-            new WritableFileWriter(std::move(lfile), log_fname, env_options_, false));
-        if(log_) delete log_;
-        if(logfile_) delete logfile_;
-        logfile_ = lfile;
-        logfile_number_ = new_log_number;
+            new WritableFileWriter(std::move(lfile), log_fname, env_options_, false)); // 创建对应新日志文件的 writer
+        if(log_) delete log_; // 删除旧日志的 writer
+        if(logfile_) delete logfile_; // 删除旧日志的文件对象
+        logfile_ = lfile;  // 指向新日志
+        logfile_number_ = new_log_number; // 指向新日志的文件号
         log_ = new log::Writer(
             std::move(file_writer), new_log_number,
-            false, false);
-        env_->SetFlushFalse(); // clear has_flush flag
-        old_logs_.push_back(LOG(old_log_number, LastSequence()));
-        DeleteObsoleteLogs();
+            false, false); // 创建新日志的 writer，拷贝上面创建的 file_writer，做一个 wrapper
+        env_->SetFlushFalse(); // clear has_flush flag 重置刷回标识
+        old_logs_.push_back(LOG(old_log_number, LastSequence())); // 把老的日志文件号添加到集合中管理
+        DeleteObsoleteLogs(); // 删除旧日志
     }
-    
+    // 有必要的话合并对应的 batch 操作
     merged_batch = WriteBatchInternal::MergeBatch(write_group, &tmp_batch_); // merge batch if necessary  
-    if (options_.wal_log)
-        status = log_->AddRecord(WriteBatchInternal::Contents(merged_batch));
+    if (options_.wal_log) // 需要写日志的话写入新日志，调用日志 writer 写入新纪录
+        status = log_->AddRecord(WriteBatchInternal::Contents(merged_batch)); // 以一个 batch 为单位
 
 
     return status;
 }
 
 void KV::DeleteObsoleteLogs() {
-    MutexLock l(&version_lock_);
+    MutexLock l(&version_lock_); // 加锁
     std::vector<std::string> filenames;
-    VersionKV* v = versions_->current();
+    VersionKV* v = versions_->current(); // 主要用于获取桶
     v->Ref();
     auto buckets = v->buckets_;
-    uint64_t min_seq = buckets.size() == 0 ? 0 : buckets[0]->last_flush_seq.load(std::memory_order_acquire);
-    for (auto& bucket: buckets) {
+    uint64_t min_seq = buckets.size() == 0 ? 0 : buckets[0]->last_flush_seq.load(std::memory_order_acquire); // 初始化 min_seq
+    for (auto& bucket: buckets) { // 遍历 wipdb 的桶找到最小的 seq
         min_seq = std::min(min_seq, bucket->last_flush_seq.load(std::memory_order_acquire));
     }
 
+    // 删除日志需要确保删除的日志的最大 seq 小于已经刷回的最小 seq
+    // 或者当前积累的日志数量达到了 10
     // delete log when more than 10 log files (TODO: flush when log too many)
     while(old_logs_.size() && old_logs_[0].biggest_sequence <= min_seq || old_logs_.size() > 10) {
-        std::string lfname = LogFileName(logpath_, old_logs_[0].number);
-        Log(options_.info_log, "Delete kv log: %s", lfname.c_str());
-        env_->DeleteFile(lfname);
-        old_logs_.pop_front();
-        log_number_min_ = old_logs_[0].number;
+        std::string lfname = LogFileName(logpath_, old_logs_[0].number); // 根据 old_logs_ 记录，创建旧的日志对象
+        Log(options_.info_log, "Delete kv log: %s", lfname.c_str()); 
+        env_->DeleteFile(lfname); // 删除对应的日志文件
+        old_logs_.pop_front(); // 从集合中移除
+        log_number_min_ = old_logs_[0].number; // 更新最小的日志序列号
     }
-    v->Unref();
+    v->Unref(); // 删除之后解引用 version
 }
 
 
 Status KV::Write(const WriteOptions& options, WriteBatch* my_batch) {
     // create a write job, prepare to put it in queue
-    WriteThread::Writer w(options, my_batch);
+    WriteThread::Writer w(options, my_batch); // 每个写调用都会构建一个 Writer 包含一些基本信息以及 batch
+    // 构建好的 writer 插入到一个链表 ，也就是加入到一个 batch_group
     write_thread_.JoinBatchGroup(&w); // append to write queue, wait until become the leader or complete
 
     Status status;
 
-    if (w.state == WriteThread::STATE_COMPLETED) {
+    if (w.state == WriteThread::STATE_COMPLETED) { // 判断当前 writer 写入是否已经完成
         return w.FinalStatus();
     }
 
     // else we are the leader of the write batch group
-    assert(w.state == WriteThread::STATE_GROUP_LEADER);
+    assert(w.state == WriteThread::STATE_GROUP_LEADER); // 此时为 leader 执行写入
 
     // Once reaches this point, the current writer "w" will try to do its write
     // job.  It may also pick up some of the remaining writers in the "writers_"
     // when it finds suitable, and finish them in the same write batch.
     // This is how a write job could be done by the other writer.
-    WriteThread::WriteGroup write_group;
+    WriteThread::WriteGroup write_group; 
     write_thread_.EnterAsBatchGroupLeader(&w, &write_group); // build batch group
     
     WriteBatch* merged_batch = nullptr;
     // only one thread will enter here
-    status = WriteToWAL(write_group, merged_batch);
+    status = WriteToWAL(write_group, merged_batch); // leader 线程执行写日志
     
     uint64_t last_seq = LastSequence();
-    KVInserter inserter(last_seq, this);
+    KVInserter inserter(last_seq, this); // 定义 memtable 的 inserter
     
 
     inserter.write_options_ = &options;
-    status = merged_batch->Iterate(&inserter);
+    status = merged_batch->Iterate(&inserter); // batch 遍历执行，leader 线程 单线程执行了 Memtable 的插入
 
     // clear tmp_batch_
     if (merged_batch == &tmp_batch_) {
@@ -685,6 +692,7 @@ Status KV::Write(const WriteOptions& options, WriteBatch* my_batch) {
 
     last_seq += WriteBatchInternal::Count(merged_batch);
     SetLastSequence(last_seq);
+    // 唤醒下一个 leader 然后退出
     write_thread_.ExitAsBatchGroupLeader(write_group, status); // 改变 batchgroup 里面的 writer status 为 complete
 
     return status;

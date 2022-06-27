@@ -43,10 +43,10 @@ int ShuffleSeq(int i) {
 void RandomSequence(uint64_t num, std::vector<uint64_t>& sequence){
     sequence.resize(num);
     for (uint64_t i = 0; i < num; ++i) {
-      sequence[i] = i;
+      sequence[i] = i; // 初始化负载
     }
     sequence_shuffle.Reset(); // make sure everytime we generate the same random sequence
-    std::random_shuffle(sequence.begin(), sequence.end(), ShuffleSeq);
+    std::random_shuffle(sequence.begin(), sequence.end(), ShuffleSeq); // 随机 shuffle 生成负载
 }
 
 // uniform
@@ -215,6 +215,7 @@ uint64_t TraceNormal::Next() {
     return  val;
 }
 
+// 使用给定分布生成 YCSB 负载
 // using given distribution trace to generate ycsb workload
 // range:   key range
 // max_num: number of operations

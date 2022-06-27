@@ -20,6 +20,14 @@ For more details about WipDB, please refer to IEEE ICDE 2021 paper - "WipDB: A W
 `...can not be used when making a shared object; recompile with -fPIC`
 cmake with option `cmake -DBUILD_SHARED_LIBS=ON  ..`
 
+# Build dynamic library
+- After executing following code, you will find `libdb.a` in `build/src/db`
+```
+cd kv && mkdir -p build && cd build
+cmake -DBUILD_SHARED_LIBS=ON -fPIC .. 
+make -j24
+```
+
 # Run test bench
 
 modify the test bench file in folder `test_bench` and run.

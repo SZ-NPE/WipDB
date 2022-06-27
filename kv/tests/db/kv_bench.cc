@@ -650,9 +650,9 @@ class Benchmark {
       if (FLAGS_range == -1) {
         FLAGS_range = FLAGS_num;
       }
-      reads_ = (FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads);
-      value_size_ = FLAGS_value_size;
-      entries_per_batch_ = FLAGS_batch_size;
+      reads_ = (FLAGS_reads < 0 ? FLAGS_num : FLAGS_reads); // 读操作数量
+      value_size_ = FLAGS_value_size; // value 大小
+      entries_per_batch_ = FLAGS_batch_size; // batch 大小，默认 1000
       write_options_ = WriteOptions();
 
       void (Benchmark::*method)(ThreadState*) = nullptr;
@@ -751,12 +751,12 @@ class Benchmark {
         num_threads = 1;
         method = &Benchmark::YCSBLoad;
       } else if (name == Slice("loadreverse")) {
-        num_threads = 1;
-        method = &Benchmark::YCSBReverse;
+        num_threads = 1; // 单线程加载
+        method = &Benchmark::YCSBReverse; // 逆序加载，即对应数据库中最近写入的数据，在新的负载中比较靠前写入
       } else if (name == Slice("release")) {        
         method = &Benchmark::ReleaseLoad;
       } else if (name == Slice("ycsba")) {
-        FLAGS_ycsb_type = kYCSB_A;
+        FLAGS_ycsb_type = kYCSB_A; // YCSB-A
         method = &Benchmark::YCSB;
       } else if (name == Slice("ycsbb")) {
         FLAGS_ycsb_type = kYCSB_B;
@@ -974,38 +974,38 @@ class Benchmark {
     Options options;
     options.env = FLAGS_env;
     options.create_if_missing = true;
-    options.block_cache = cache_;
-    options.write_buffer_size = FLAGS_write_buffer_size;
-    options.max_file_size = FLAGS_max_file_size;
-    options.block_size = FLAGS_block_size;
-    options.max_open_files = FLAGS_open_files;
-    options.filter_policy = filter_policy_;
-    options.reuse_logs = FLAGS_reuse_logs;
-    options.compression = kNoCompression;
-    options.logpath = FLAGS_logpath;
-    options.log_buffer_size = FLAGS_log_buffer_size;
-    options.prefix_extractor.reset(kv::NewFixedPrefixTransform(FLAGS_prefix_length));
-    options.mem_append = FLAGS_mem_append;
+    options.block_cache = cache_; // 块缓存
+    options.write_buffer_size = FLAGS_write_buffer_size; // 写缓冲大小
+    options.max_file_size = FLAGS_max_file_size; // SST 大小
+    options.block_size = FLAGS_block_size; // 块大小
+    options.max_open_files = FLAGS_open_files; // 同时最大打开的文件数，默认为 0
+    options.filter_policy = filter_policy_; // 布隆过滤器
+    options.reuse_logs = FLAGS_reuse_logs; // reopen 的时候是否重用 log/MANIFEST 日志
+    options.compression = kNoCompression; // 是否开启数据压缩
+    options.logpath = FLAGS_logpath; // 日志存储路径，如果为空，默认路径
+    options.log_buffer_size = FLAGS_log_buffer_size; // 日志 buffer 大小，默认 64M
+    options.prefix_extractor.reset(kv::NewFixedPrefixTransform(FLAGS_prefix_length)); // 前缀长度
+    options.mem_append = FLAGS_mem_append; // 是否使用 memtable append 模式 （实际上仿佛没啥用）
     entries_per_batch_ = FLAGS_batch_size;
-    options.direct_io = FLAGS_direct_io;
-    options.no_close = FLAGS_no_close;
-    options.skiplistrep = FLAGS_skiplistrep;
-    options.allow_bg_cancel = FLAGS_bg_cancel;
+    options.direct_io = FLAGS_direct_io; // 是否开启 direct io
+    options.no_close = FLAGS_no_close; // 是否在 pwrite 之后关闭文件，默认 false
+    options.skiplistrep = FLAGS_skiplistrep; // Memtable 是否启用跳表，true 即启用
+    options.allow_bg_cancel = FLAGS_bg_cancel; // 是否允许后台 compaction 被取消，默认 false
     
-    if (FLAGS_log) options.wal_log = true;
+    if (FLAGS_log) options.wal_log = true; // 是否开启写日志
     else options.wal_log = false;
 
     printf("Write buffer: %.2f KB. Compression: %d. \n", FLAGS_write_buffer_size / 1024.0, options.compression);
     vector<std::string> pivots;
-    uint64_t partition = FLAGS_partition;
+    uint64_t partition = FLAGS_partition; // 分区数量
     uint64_t range = FLAGS_num;
-    for (uint64_t i = 1; i <= partition; ++i) {
+    for (uint64_t i = 1; i <= partition; ++i) { // 创建分区键
         char key[100];
-        snprintf(key, sizeof(key), "%016" PRIu64 "", range/partition * i);
+        snprintf(key, sizeof(key), "%016" PRIu64 "", range/partition * i); // 按照键范围分区，得到分区键
         Slice skey(key);
         pivots.push_back(skey.ToString());
     }
-    if (FLAGS_filllarge) {
+    if (FLAGS_filllarge) { // 是否为测试大规模数据插入的场景，是的话加入一个分区键的上界，即最大范围
       pivots.clear();
       char key[100];
       snprintf(key, sizeof(key), "%016" PRIu64 "", kRANDOM_RANGE);
@@ -1014,7 +1014,8 @@ class Benchmark {
       printf("Bucket to Max Range. %s\n", key);
     }
     
-    Status s = KV::Open(options, FLAGS_db, pivots, &db_, FLAGS_hugepage);
+    // FLAGS_hugepage 表明是否开启大页面
+    Status s = KV::Open(options, FLAGS_db, pivots, &db_, FLAGS_hugepage); // open 数据库，传入 pivots 数组，即分区键数组
 
     if (!s.ok()) {
       fprintf(stderr, "open error: %s\n", s.ToString().c_str());
@@ -1300,11 +1301,11 @@ class Benchmark {
     char value_buffer[1024];
     snprintf(key, sizeof(key), "%016llu", (unsigned long long)operation.key);
     if (operation.type == kYCSB_Write) {
-      res = db_->Put(woption,key, ivalue).ok();
+      res = db_->Put(woption,key, ivalue).ok(); // 执行写
     } else if (operation.type == kYCSB_Read) {
-      res = db_->Get(roption, key, ovalue).ok();
+      res = db_->Get(roption, key, ovalue).ok(); // 执行读
     } else if (operation.type == kYCSB_Query) {
-      auto* iter = db_->NewIterator(roption);
+      auto* iter = db_->NewIterator(roption); // scan
       iter->Seek(key);
       if (iter->Valid()) {
         if (iter->key() == key) {
@@ -1321,10 +1322,10 @@ class Benchmark {
       }
       delete iter;
       iter = nullptr;
-    } else if (operation.type == kYCSB_ReadModifyWrite) {
-        res = db_->Get(roption, key, ovalue).ok();
+    } else if (operation.type == kYCSB_ReadModifyWrite) { // RMW
+        res = db_->Get(roption, key, ovalue).ok(); // R
         if (res) {
-          db_->Put(woption, key, ivalue);
+          db_->Put(woption, key, ivalue); // W
         }
     }
 
@@ -1335,7 +1336,7 @@ class Benchmark {
       RandomSequence(FLAGS_num, ycsb_insertion_sequence);
 
     // reverse insertion order, make the latest to fronter
-    std::reverse(ycsb_insertion_sequence.begin(), ycsb_insertion_sequence.end());
+    std::reverse(ycsb_insertion_sequence.begin(), ycsb_insertion_sequence.end()); // 倒序，让最近的数据到最前面
   }
 
   void YCSBLoad(ThreadState* thread) {
@@ -1366,41 +1367,42 @@ class Benchmark {
     thread->stats.AddBytes(bytes);
   }
 
-  void YCSB(ThreadState* thread) {
+  void YCSB(ThreadState* thread) { // 不同类型的 YCSB 负载
     Trace* ycsb_selector = nullptr;
-    if (FLAGS_ycsb_type == kYCSB_D) {     
+    if (FLAGS_ycsb_type == kYCSB_D) {     // YCSB-D
       // use exponential distribution as selector to select more on front index
-      ycsb_selector = new TraceExponential(kYCSB_LATEST_SEED + thread->tid * 996, 50, FLAGS_num);
+      ycsb_selector = new TraceExponential(kYCSB_LATEST_SEED + thread->tid * 996, 50, FLAGS_num); // 指数发呢不，选择比较靠前的数据
     }
     else {
-      ycsb_selector = new TraceUniform(kYCSB_SEED + FLAGS_ycsb_type * 333 + thread->tid * 996);
+      // 不同的 YCSB 类型，不同的线程 使用不同的种子
+      ycsb_selector = new TraceUniform(kYCSB_SEED + FLAGS_ycsb_type * 333 + thread->tid * 996); 
     }
 
     std::vector<YCSB_Op> ycsb_ops = YCSB_LoadGenerate(FLAGS_num, FLAGS_ycsb_ops_num, FLAGS_ycsb_type, ycsb_selector, ycsb_insertion_sequence);
     Status s;
     uint64_t len = std::min(FLAGS_ycsb_ops_num, FLAGS_num);
-    if (FLAGS_ycsb_type == kYCSB_E) {
+    if (FLAGS_ycsb_type == kYCSB_E) { // 如果是 YCSB-E 减少负载
       len = len / 4;
     }
-    Duration duration(0, len);
+    Duration duration(0, len); // 记录耗时
     int64_t bytes = 0;
 
-    thread->stats.Start();
+    thread->stats.Start(); // 开始计时
     uint64_t found = 0;
     uint64_t total_ops = 0;
     std::string ovalue;
     for (uint64_t i = 0; i < len; ++i) {
       total_ops++;
       Slice ivalue = thread->gen.Generate(value_size_);
-      bool op_res = YCSBOperation(ycsb_ops[i], ivalue, &ovalue);
+      bool op_res = YCSBOperation(ycsb_ops[i], ivalue, &ovalue); // 执行对应的读写操作
       if ((ycsb_ops[i].type == kYCSB_Read || ycsb_ops[i].type == kYCSB_ReadModifyWrite || ycsb_ops[i].type == kYCSB_Query) && 
           op_res) {
-        found++;
+        found++; // 读操作执行成功， found+1
       }
-      bytes += ycsb_ops[i].type == kYCSB_Query ? (value_size_  + 16) * FLAGS_seek_nexts : (value_size_  + 16);
-      thread->stats.FinishedSingleOp();
+      bytes += ycsb_ops[i].type == kYCSB_Query ? (value_size_  + 16) * FLAGS_seek_nexts : (value_size_  + 16); // 统计完成写入的字节数
+      thread->stats.FinishedSingleOp(); // 完成单个操作的计时
     } 
-    thread->stats.AddBytes(bytes);
+    thread->stats.AddBytes(bytes); // 总的字节数
     
     char msg[100];
     snprintf(msg, sizeof(msg), "(%" PRIu64 " of %" PRIu64 " found)", found, total_ops);
@@ -2038,9 +2040,9 @@ int main(int argc, char** argv) {
   printf("\n");
   ParseCommandLineFlags(&argc, &argv, true);
   printf("Bench num: %ld, range: %ld\n", (int64_t)FLAGS_num, (int64_t)FLAGS_range);
-  FLAGS_env->IncBackgroundThreadsIfNeeded(1 , kv::Env::Priority::BOTTOM); // for split
-  FLAGS_env->IncBackgroundThreadsIfNeeded(FLAGS_low_pool , kv::Env::Priority::LOW);
-  FLAGS_env->IncBackgroundThreadsIfNeeded(FLAGS_high_pool, kv::Env::Priority::HIGH);
+  FLAGS_env->IncBackgroundThreadsIfNeeded(1 , kv::Env::Priority::BOTTOM); // for split 用于 bucket 拆分的线程
+  FLAGS_env->IncBackgroundThreadsIfNeeded(FLAGS_low_pool , kv::Env::Priority::LOW); // major compaction 的线程 flush
+  FLAGS_env->IncBackgroundThreadsIfNeeded(FLAGS_high_pool, kv::Env::Priority::HIGH); // minor compaction 的线程 compaction
 
   // Choose a location for the test database if none given with --db=<path>
   if (FLAGS_db == "") {

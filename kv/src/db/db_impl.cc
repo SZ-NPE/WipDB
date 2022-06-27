@@ -2036,26 +2036,27 @@ Status DB::Open(const Options& options, const std::string& dbname,
   // store_name is where the database is stored
   *dbptr = nullptr;
   
-  DBImpl* impl = new DBImpl(options, dbname, store_name);
-  impl->mutex_.Lock();
+  DBImpl* impl = new DBImpl(options, dbname, store_name); // store_name 表示为 桶 所属于的 DB
+  impl->mutex_.Lock(); // 加锁
   VersionEdit edit;
   if (args != nullptr) {
-    impl->bucket_ = reinterpret_cast<Bucket*>(args);
+    impl->bucket_ = reinterpret_cast<Bucket*>(args); // 类型强制转换 bucket
     impl->kv_ = kv;
-    impl->hpblock_ = impl->bucket_->hugepage;
+    impl->hpblock_ = impl->bucket_->hugepage; // 设置对应的大页
   }
   // Recover handles create_if_missing, error_if_exists
   bool save_manifest = false; 
 
-  Status s = impl->Recover(&edit, &save_manifest, force_new);
-  if (s.ok() && impl->mem_ == nullptr) {
+  Status s = impl->Recover(&edit, &save_manifest, force_new); // 恢复数据，传入 force_new
+  if (s.ok() && impl->mem_ == nullptr) { // 如果 mem 为空指针
 
     
     if (s.ok()) {
       assert(!impl->hashtable_free_.empty());
+      // 创建一个新的 memtable，使用对应的大页面
       impl->mem_ = new MemTable(impl->internal_comparator_, impl->hpblock_, impl->mem_options_, impl->flush_size_, impl->hashtable_free_.front());
-      impl->hashtable_free_.pop_front();
-      impl->mem_->Ref();
+      impl->hashtable_free_.pop_front(); // 空闲哈希表出队一个元素
+      impl->mem_->Ref(); // 引用计数+1
     }
   }
 
@@ -2063,7 +2064,7 @@ Status DB::Open(const Options& options, const std::string& dbname,
   if (s.ok() && save_manifest) {
     edit.SetPrevLogNumber(0);  // No older logs needed after recovery.
     edit.SetLogNumber(impl->logfile_number_);
-    s = impl->versions_->LogAndApplyKV(&edit, &impl->mutex_);
+    s = impl->versions_->LogAndApplyKV(&edit, &impl->mutex_); // 故障恢复的相关操作
   }
 
   // if (s.ok()) {

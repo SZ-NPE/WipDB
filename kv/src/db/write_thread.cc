@@ -57,7 +57,8 @@ uint8_t WriteThread::AwaitState(Writer* w, uint8_t goal_mask,
                                 AdaptationContext* ctx) {
   uint8_t state;
 
-  // 1. Busy loop using "pause" for 1 micro sec
+  // 使用轮询替代条件锁，并减少上下文切换
+  // 1. Busy loop using "pause" for 1 micro sec 忙等轮询，等待 state 条件满足
   // 2. Else SOMETIMES busy loop using "yield" for 100 micro sec (default)
   // 3. Else blocking wait
 
@@ -65,12 +66,12 @@ uint8_t WriteThread::AwaitState(Writer* w, uint8_t goal_mask,
   // is the effect of the pause instruction), so 200 iterations is a bit
   // more than a microsecond.  This is long enough that waits longer than
   // this can amortize the cost of accessing the clock and yielding.
-  for (uint32_t tries = 0; tries < 200; ++tries) {
+  for (uint32_t tries = 0; tries < 200; ++tries) { // 忙等轮询 200 次，大约 1 微妙
     state = w->state.load(std::memory_order_acquire);
     if ((state & goal_mask) != 0) {
       return state;
     }
-    port::AsmVolatilePause();
+    port::AsmVolatilePause(); // 执行 pause 指令减少重排序开销并减少处理器消耗
   }
 
   // This is below the fast path, so that the stat is zero when all writes are
@@ -214,35 +215,36 @@ void WriteThread::SetState(Writer* w, uint8_t new_state) {
 }
 
 bool WriteThread::LinkOne(Writer* w, std::atomic<Writer*>* newest_writer) {
-  assert(newest_writer != nullptr);
-  assert(w->state == STATE_INIT);
-  Writer* writers = newest_writer->load(std::memory_order_relaxed);
+  assert(newest_writer != nullptr); // newest_writer 原子指针指向了最新的 writer，并链接其他 writer
+  assert(w->state == STATE_INIT); // 数据检查
+  Writer* writers = newest_writer->load(std::memory_order_relaxed); // 加载最新的 writer 到 writers
   while (true) {
     // If write stall in effect, and w->no_slowdown is not true,
     // block here until stall is cleared. If its true, then return
     // immediately
-    if (writers == &write_stall_dummy_) {
-      if (w->no_slowdown) {
-        w->status = Status::Incomplete("Write stall");
+    if (writers == &write_stall_dummy_) { // 判断当前最新的 writer 是否为虚拟写停顿 writer，是的话说明有写停顿
+      if (w->no_slowdown) { // 检查 writer 是否开启了 no_slowdown
+        w->status = Status::Incomplete("Write stall"); // 如果开启了 no_slowdown 直接返回 false
         SetState(w, STATE_COMPLETED);
         return false;
       }
-      // Since no_slowdown is false, wait here to be notified of the write
+      // Since no_slowdown is false, wait here to be notified of the write 没开启 no_slowdown，加锁等待
       // stall clearing
       {
-        MutexLock lock(&stall_mu_);
-        writers = newest_writer->load(std::memory_order_relaxed);
-        if (writers == &write_stall_dummy_) {
-          stall_cv_.Wait();
+        MutexLock lock(&stall_mu_); // 加锁
+        writers = newest_writer->load(std::memory_order_relaxed); // 获取最新的 writer
+        if (writers == &write_stall_dummy_) { // 
+          stall_cv_.Wait(); // 等待 stall 完成
           // Load newest_writers_ again since it may have changed
-          writers = newest_writer->load(std::memory_order_relaxed);
+          writers = newest_writer->load(std::memory_order_relaxed); // 获取完成后的 newest_writer
           continue;
         }
       }
     }
-    w->link_older = writers;
-    if (newest_writer->compare_exchange_weak(writers, w)) {
-      return (writers == nullptr);
+    w->link_older = writers; // 给新加入的 writer 的指针赋值，指向队列中的其他 writers
+    if (newest_writer->compare_exchange_weak(writers, w)) { // CAS 将最近新加入的 w 作为 newest_writer
+      return (writers == nullptr); // 如果替换掉的 writers 为空说明新加入的 writer 是第一个 writer，返回为 true
+      // 返回为 true 表明为这个 Group 的 leader
     }
   }
 }
@@ -359,15 +361,15 @@ static WriteThread::AdaptationContext jbg_ctx("JoinBatchGroup");
 void WriteThread::JoinBatchGroup(Writer* w) {
   assert(w->batch != nullptr);
 
-  bool linked_as_leader = LinkOne(w, &newest_writer_);
+  bool linked_as_leader = LinkOne(w, &newest_writer_); // 将新加入的 writer 加入到 Group，并返回当前 writer 是否为 leader
 
   if (linked_as_leader) {
-    SetState(w, STATE_GROUP_LEADER);
+    SetState(w, STATE_GROUP_LEADER); // 如果返回为 true，当前 writer 的状态即为 leader（第一个插入 Group 的被任命为 leader）
   }
 
   
 
-  if (!linked_as_leader) {
+  if (!linked_as_leader) { // folower 进入如下逻辑
     /**
      * Wait util:
      * 1) An existing leader pick us as the new leader when it finishes
@@ -384,7 +386,7 @@ void WriteThread::JoinBatchGroup(Writer* w) {
     
     AwaitState(w, STATE_GROUP_LEADER | STATE_MEMTABLE_WRITER_LEADER |
                       STATE_PARALLEL_MEMTABLE_WRITER | STATE_COMPLETED,
-               &jbg_ctx);
+               &jbg_ctx); // 等待 writer 线程改变
     
   }
 }
@@ -395,7 +397,7 @@ size_t WriteThread::EnterAsBatchGroupLeader(Writer* leader,
   assert(leader->batch != nullptr);
   assert(write_group != nullptr);
 
-  size_t size = WriteBatchInternal::ByteSize(leader->batch);
+  size_t size = WriteBatchInternal::ByteSize(leader->batch); // 获取 leader 的 batch 大小
 
   // Allow the group to grow up to a maximum size, but if the
   // original write is small, limit the growth so we do not slow
@@ -409,7 +411,7 @@ size_t WriteThread::EnterAsBatchGroupLeader(Writer* leader,
   write_group->leader = leader;
   write_group->last_writer = leader;
   write_group->size = 1;
-  Writer* newest_writer = newest_writer_.load(std::memory_order_acquire);
+  Writer* newest_writer = newest_writer_.load(std::memory_order_acquire); // 获取最新的 writer
 
   // This is safe regardless of any db mutex status of the caller. Previous
   // calls to ExitAsGroupLeader either didn't call CreateMissingNewerLinks
@@ -421,7 +423,7 @@ size_t WriteThread::EnterAsBatchGroupLeader(Writer* leader,
   // Tricky. Iteration start (leader) is exclusive and finish
   // (newest_writer) is inclusive. Iteration goes from old to new.
   Writer* w = leader;
-  while (w != newest_writer) {
+  while (w != newest_writer) { // 收集 leader 一次批量写入的数据
     w = w->link_newer;
 
     if (w->sync && !leader->sync) {
@@ -453,7 +455,7 @@ size_t WriteThread::EnterAsBatchGroupLeader(Writer* leader,
       break;
     }
 
-    w->write_group = write_group;
+    w->write_group = write_group; // 绑定 write group
     size += batch_size;
     write_group->last_writer = w;
     write_group->size++;
@@ -598,8 +600,8 @@ void WriteThread::ExitAsBatchGroupFollower(Writer* w) {
 static WriteThread::AdaptationContext eabgl_ctx("ExitAsBatchGroupLeader");
 void WriteThread::ExitAsBatchGroupLeader(WriteGroup& write_group,
                                          Status status) {
-  Writer* leader = write_group.leader;
-  Writer* last_writer = write_group.last_writer;
+  Writer* leader = write_group.leader; 
+  Writer* last_writer = write_group.last_writer; // 获取 leader 和最后一个 writer
   assert(leader->link_older == nullptr);
 
   // Propagate memtable write error to the whole group.
@@ -608,7 +610,7 @@ void WriteThread::ExitAsBatchGroupLeader(WriteGroup& write_group,
     status = write_group.status;
   }
 
-  {
+  { // 唤醒后续的 group
     Writer* head = newest_writer_.load(std::memory_order_acquire);
     if (head != last_writer ||
         !newest_writer_.compare_exchange_strong(head, nullptr)) {
@@ -641,13 +643,13 @@ void WriteThread::ExitAsBatchGroupLeader(WriteGroup& write_group,
     // else nobody else was waiting, although there might already be a new
     // leader now
 
-    while (last_writer != leader) {
+    while (last_writer != leader) { // 更改一个 group 内的操作的状态
       last_writer->status = status;
       // we need to read link_older before calling SetState, because as soon
       // as it is marked committed the other thread's Await may return and
       // deallocate the Writer.
       auto next = last_writer->link_older;
-      SetState(last_writer, STATE_COMPLETED);
+      SetState(last_writer, STATE_COMPLETED); // 改变其他线程的状态
       // perror("set complete");
       last_writer = next;
     }

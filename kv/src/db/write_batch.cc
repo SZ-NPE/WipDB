@@ -156,21 +156,21 @@ void WriteBatchInternal::Append(WriteBatch* dst, const WriteBatch* src) {
 WriteBatch* WriteBatchInternal::MergeBatch(const WriteThread::WriteGroup& write_group,
                                WriteBatch* tmp_batch) {
   assert(tmp_batch != nullptr);
-  WriteBatch* merged_batch = nullptr;
-  auto* leader = write_group.leader;
-  assert(!leader->disable_wal);  // Same holds for all in the batch group
+  WriteBatch* merged_batch = nullptr; // 合并后的 batch
+  auto* leader = write_group.leader; // 获取对应的 leader
+  assert(!leader->disable_wal);  // Same holds for all in the batch group 确保没有关闭日志写入
   if (write_group.size == 1 ) {
     // we simply write the first WriteBatch to WAL if the group only
     // contains one batch, that batch should be written to the WAL,
     // and the batch is not wanting to be truncated
-    merged_batch = leader->batch;
+    merged_batch = leader->batch; // 如果只有一个 batch 就直接使用 leader 的 batch
   } else {
     // WAL needs all of the batches flattened into a single batch.
     // We could avoid copying here with an iov-like AddRecord
     // interface
-    merged_batch = tmp_batch;
+    merged_batch = tmp_batch; // 否则指向 tmp_batch
     for (auto writer : write_group){
-        WriteBatchInternal::Append(merged_batch, writer->batch);
+        WriteBatchInternal::Append(merged_batch, writer->batch); // 然后把 group 中的每个 batch 追加，形成一个 batch
     }
   }
   return merged_batch;
