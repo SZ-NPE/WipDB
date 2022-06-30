@@ -1,0 +1,2 @@
+/usr/bin/ar qc libmoni.a  CMakeFiles/moni.dir/histogram.cc.o CMakeFiles/moni.dir/instrumented_mutex.cc.o CMakeFiles/moni.dir/statistics.cc.o CMakeFiles/moni.dir/thread_status_impl.cc.o CMakeFiles/moni.dir/thread_status_updater.cc.o CMakeFiles/moni.dir/thread_status_util.cc.o
+/usr/bin/ranlib libmoni.a
