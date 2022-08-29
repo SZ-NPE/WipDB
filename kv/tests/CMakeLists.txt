@@ -8,7 +8,7 @@ find_package(Threads REQUIRED)
 include(ExternalProject)
 ExternalProject_Add(
     googletest
-    URL https://github.com/google/googletest/archive/master.zip
+    URL https://github.com/google/googletest/archive/refs/tags/v1.12.0.zip
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/googletest
     # Disable install step
     INSTALL_COMMAND ""

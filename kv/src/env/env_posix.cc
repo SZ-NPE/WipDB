@@ -907,9 +907,9 @@ void PosixWritableFile::SetWriteLifeTimeHint(Env::WriteLifeTimeHint hint) {
   if (hint == write_hint_) {
     return;
   }
-  if (fcntl(fd_, F_SET_RW_HINT, &hint) == 0) {
-    write_hint_ = hint;
-  }
+  // if (fcntl(fd_, F_SET_RW_HINT, &hint) == 0) {
+  //   write_hint_ = hint;
+  // }
 #else
   (void)hint;
 #endif // ROCKSDB_VALGRIND_RUN

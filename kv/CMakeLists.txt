@@ -7,10 +7,14 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif()
+# if(NOT CMAKE_BUILD_TYPE)
+#   set(CMAKE_BUILD_TYPE Release)
+# endif()
 
+# add_definitions(-DNDEBUG)
+# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+# https://blog.csdn.net/Huoon/article/details/108520571
 
 include(CheckCCompilerFlag)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")

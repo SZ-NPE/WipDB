@@ -337,9 +337,19 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
       }
       // search backup pool_ 
       else {
-        for (auto& e : pool_) {
-          if (e.key.compare(user_key) == 0) {
-            SaveValue(&saver, (char*)e.entry);
+        // for (auto& e : pool_) {
+        //   if (e.key.compare(user_key) == 0) {
+        //     SaveValue(&saver, (char*)e.entry);
+        //   }
+        // }
+
+        for (int i = 0; i < pool_.size(); i++) {
+          ArrayNode node = pool_[i];
+          Slice& key = node.key;
+          if (&node == &pool_[i] && key != nullptr && key.size() < 1024 && key.data() != "") {
+            if (key.compare(user_key) == 0) {
+              SaveValue(&saver, (char*)pool_[i].entry);
+            }
           }
         }
       }

@@ -30,7 +30,7 @@
 
 //#define READ_PARALLEL
 //#define SEEK_PARALLEL
-#define FILE_LEVEL_FILTER
+// #define FILE_LEVEL_FILTER
 //#define DISABLE_SEEK_BASED_COMPACTION
 
 
