@@ -1,2 +1,0 @@
-/usr/bin/ar qc libenv.a  CMakeFiles/env.dir/env_posix.cc.o CMakeFiles/env.dir/env.cc.o
-/usr/bin/ranlib libenv.a

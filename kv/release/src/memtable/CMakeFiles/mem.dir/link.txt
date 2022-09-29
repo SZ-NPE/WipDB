@@ -1,2 +1,0 @@
-/usr/bin/ar qc libmem.a  CMakeFiles/mem.dir/alloc_tracker.cc.o CMakeFiles/mem.dir/hash_cuckoo_rep.cc.o CMakeFiles/mem.dir/hash_skiplist_rep.cc.o CMakeFiles/mem.dir/skiplistrep.cc.o CMakeFiles/mem.dir/vectorrep.cc.o CMakeFiles/mem.dir/write_buffer_manager.cc.o
-/usr/bin/ranlib libmem.a
