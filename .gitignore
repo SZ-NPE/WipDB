@@ -1,1 +1,4 @@
 build/
+.vscode/
+ycsb-thread-*.trace
+ycsb.txt
